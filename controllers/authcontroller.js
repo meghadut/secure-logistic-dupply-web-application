@@ -1,0 +1,64 @@
+const asyncHandler = require("../utils/AsyncHandling");
+const { createResponse } = require("../utils/ResponseHandling");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+
+const sendTokenCookie = (res, userId) => {
+  const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: true, // Always true for HTTPS hosting like Render
+    sameSite: "None", // Required for cross-origin (Vercel <-> Render)
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
+
+  return token;
+};
+
+
+const signup = asyncHandler(async (req, res) => {
+  const { name, username, email, password, city, category } = req.body;
+
+  if (await User.findOne({ email })) {
+    return createResponse(res, 400, "Email already exists");
+  }
+  if (await User.findOne({ username })) {
+    return createResponse(res, 400, "Username already exists");
+  }
+
+  const validCategories = ["Buyer", "Seller", "DeliveryAdmin", "Middleman"];
+  if (!validCategories.includes(category)) {
+    return createResponse(res, 400, "Invalid user category");
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const user = await User.create({
+    name,
+    username,
+    email,
+    password: hashedPassword,
+    city,
+    category,
+  });
+
+  // OPTIONAL: Auto-login user on signup (enable below if you want that)
+  // sendTokenCookie(res, user._id);
+
+  return createResponse(res, 201, "User registered successfully", {
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      city: user.city,
+      category: user.category
+    }
+  });
+});
+
+module.exports={
+    signup,
+};
